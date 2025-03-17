@@ -20,6 +20,7 @@ def map_tree(f, nodes: list):
 
 class Application:
     def __init__(self):
+        self.points = []
         self.map_ss = None
         self.windowbounds = None
         # get project gorgon window bounds
@@ -90,13 +91,15 @@ class Application:
             # simulate a mouse right-click at the location of the map icon
             
             pag.moveTo(x, y, 0.05)
-            time.sleep(0.01); pag.click(x, y, button='right')
+            time.sleep(0.05); pag.click(x, y, button='right')
             pag.moveRel(-110,-125)
-            time.sleep(0.01); pag.click(button='left')
+            time.sleep(0.05); pag.click(button='left')
             time.sleep(1.0)
 
             # capture the map region
             self.register_point()
+
+        print(f"points = {self.points}")
         
         # show the map with the points
         # for x,y in self.points:
@@ -154,31 +157,45 @@ class Application:
         
     def show_path(self, hi=None):
         self.capture_region()
+
+        # draw the points
         for i,(x,y) in enumerate(self.points):
             cv2.circle(self.map_ss, (x, y), 5, (0, 255, 255), 1)
-            cv2.putText(self.map_ss, str(i), (x + 10, y + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-            cv2.putText(self.map_ss, str(i), (x + 10, y + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
+        # draw the tsp path
         for p1,p2 in zip(self.tsp_path, self.tsp_path[1:] + [self.tsp_path[0]]):
             cv2.line(self.map_ss, self.points[p1], self.points[p2], (255, 0, 0), 2)
+
+        # draw the point numbers 
+        for i,(x,y) in enumerate(self.points):
+            cv2.putText(self.map_ss, str(i), (x + 10, y + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+            cv2.putText(self.map_ss, str(i), (x + 10, y + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        
+        # highlight a point if provided
         if hi is not None:
             cv2.circle(self.map_ss, self.points[hi], 10, (255, 0, 0), 2)
+
+        # zoom in by 50%
+        self.map_ss = cv2.resize(self.map_ss, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_LINEAR)
+
         cv2.imshow("Map", self.map_ss)
 
     def follow_path(self):
         selected_point = 0
         def mouse_callback(event, x, y, flags, param):
+            mx, my = x/1.8, y/1.8
             nonlocal selected_point
             if event == cv2.EVENT_LBUTTONDOWN:
                 for i, (px, py) in enumerate(self.points):
-                    if abs(px - x) < 10 and abs(py - y) < 10:
+                    if abs(px - mx) < 10 and abs(py - my) < 10:
                         selected_point = i
                         break
                 print(f"Selected point: {selected_point}")
-        cv2.namedWindow("Map")
+
+        self.show_path()
         cv2.setMouseCallback("Map", mouse_callback)
         while True:
-            self.show_path(selected_point)
+            self.show_path(hi=selected_point)
             key = cv2.waitKey(1)
             if key == ord('d'):
                 # delete the selected point
@@ -192,18 +209,18 @@ class Application:
             elif key == 'p':
                 selected_point = (selected_point - 1) % len(self.points)
             elif key == 27:  # ESC key
+                print("remaining points:", self.points)
                 break
 
-
-
-    
 def main():
     print("Select the region to capture...")
     app = Application()
-    app.click_all_maps()
+
+    # app.points = [(215, 324), (139, 495), (313, 367), (33, 453), (107, 216), (77, 23), (365, 24), (365, 24), (505, 239), (280, 356), (183, 260), (65, 8), (431, 227), (269, 533), (269, 346), (23, 67), (45, 239), (248, 474), (45, 249), (22, 357), (97, 432), (377, 217), (279, 132), (312, 77), (291, 292), (409, 474), (98, 217), (119, 109), (269, 399), (334, 324), (511, 109), (151, 399), (506, 87), (33, 66), (506, 99), (376, 163), (409, 249), (33, 271), (33, 495), (269, 474), (301, 464), (510, 205), (13, 524), (216, 163), (151, 46), (420, 195), (55, 174), (77, 23), (430, 399), (194, 345), (248, 474), (22, 163), (388, 356), (129, 508), (323, 464), (366, 367), (129, 44), (108, 173), (12, 432), (162, 507), (76, 410), (162, 56), (462, 67), (173, 388), (11, 66)]
+    #app.points = [(215, 324), (139, 495), (313, 367), (33, 453), (107, 216), (77, 23), (365, 24), (173, 46), (505, 239), (280, 356), (183, 260), (65, 8), (431, 227), (269, 533), (269, 346), (23, 67), (45, 239), (248, 474), (45, 249), (22, 357), (97, 432), (377, 217), (279, 132), (312, 77), (409, 474), (98, 217), (119, 109), (269, 399), (334, 324), (511, 109), (151, 399), (506, 87), (33, 66), (506, 99), (376, 163), (409, 249), (33, 271), (33, 495), (269, 474), (301, 464), (510, 205), (13, 524), (216, 163), (151, 46), (420, 195), (55, 174), (77, 23), (430, 399), (194, 345), (248, 474), (22, 163), (388, 356), (129, 508), (323, 464), (366, 367), (129, 44), (108, 173), (12, 432), (162, 507), (76, 410), (162, 56), (462, 67), (173, 388), (173, 388)]
+    if len(app.points) == 0: app.click_all_maps()
     app.run_tsp()
     app.follow_path()
-    # region = app.select_region()
-    # app.register_points()
+
 if __name__ == "__main__":
     main()
