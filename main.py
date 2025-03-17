@@ -7,6 +7,7 @@ import Xlib.display
 import sys
 import networkx as nx
 import time
+import pyautogui as pag
 
 def map_tree(f, nodes: list):
     for node in nodes:
@@ -38,11 +39,15 @@ class Application:
         if self.windowbounds is None:
             print("Project Gorgon window not found!")
             sys.exit(1)
+        
+        #self.select_region()
+        self.region = (6, 63, 522, 544) # where i like to put *my* map lol
+        print (f"Selected region: {self.region}")
     
     def select_region(self):
-        self.capture_region()
+        self.capture_window()
         # allow user to drag-select a region and confirm when done
-        self.region = cv2.selectROI("Select Region", self.map_ss, fromCenter=False, showCrosshair=True)
+        self.region = cv2.selectROI("Select Region", self.winimg, fromCenter=False, showCrosshair=True)
         # destroy that window
         cv2.destroyWindow("Select Region")
     
@@ -54,6 +59,7 @@ class Application:
             self.map_ss = img[int(self.region[1]):int(self.region[1] + self.region[3]), int(self.region[0]):int(self.region[0] + self.region[2])]
 
     def capture_window(self):
+        self.winimg = None
         with mss.mss() as sct:
             win = np.array(sct.grab(self.windowbounds))
             self.winimg = cv2.cvtColor(win, cv2.COLOR_BGRA2BGR)
@@ -66,7 +72,7 @@ class Application:
         result = cv2.matchTemplate(self.winimg, template, cv2.TM_CCOEFF_NORMED)
         maxval = np.max(result)
 
-        threshold = 0.99
+        threshold = 0.98
         result = cv2.threshold(result, threshold, 1.0, cv2.THRESH_BINARY)[1]
         cv2.imshow("Map mask", result)
 
@@ -75,17 +81,29 @@ class Application:
         loc = list(zip(*loc[::-1]))
         surveys = [(x + w//2, y + h//2) for (x, y) in loc]
         
+        self.points = []
         for i, pt in enumerate(surveys):
             # click on the map icon
-            print(f"Clicking on survey {i} at {pt}")
-            # simulate a mouse right-click at the location of the map icon
-            Xlib.display.Display().screen().root.warp_pointer(pt[0], pt[1])
-            time.sleep(0.1)
+            x,y = pt[0] + self.windowbounds['left'], pt[1] + self.windowbounds['top']
 
-        while True:
-            k = cv2.waitKey(0)
-            if k == 27:
-                break
+            print(f"Clicking on survey {i} at {x}, {y}")
+            # simulate a mouse right-click at the location of the map icon
+            
+            pag.moveTo(x, y, 0.05)
+            time.sleep(0.01); pag.click(x, y, button='right')
+            pag.moveRel(-110,-125)
+            time.sleep(0.01); pag.click(button='left')
+            time.sleep(1.0)
+
+            # capture the map region
+            self.register_point()
+        
+        # show the map with the points
+        # for x,y in self.points:
+        #     cv2.circle(self.map_ss, (x, y), 5, (0, 255, 255), 2)
+        #     
+        # cv2.imshow("Map", self.map_ss)
+        # cv2.waitKey(0)
 
     def register_point(self):
         self.capture_region()
@@ -111,9 +129,6 @@ class Application:
         tsp_path = nx.approximation.traveling_salesman_problem(G, cycle=False)
         self.tsp_path = [i for i in tsp_path]
 
-        self.show_path()
-
-
     def register_points_manual(self):
         self.points = []
 
@@ -137,24 +152,57 @@ class Application:
                 break
             
         
-    def show_path(self):
+    def show_path(self, hi=None):
         self.capture_region()
+        for i,(x,y) in enumerate(self.points):
+            cv2.circle(self.map_ss, (x, y), 5, (0, 255, 255), 1)
+            cv2.putText(self.map_ss, str(i), (x + 10, y + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+            cv2.putText(self.map_ss, str(i), (x + 10, y + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
         for p1,p2 in zip(self.tsp_path, self.tsp_path[1:] + [self.tsp_path[0]]):
             cv2.line(self.map_ss, self.points[p1], self.points[p2], (255, 0, 0), 2)
+        if hi is not None:
+            cv2.circle(self.map_ss, self.points[hi], 10, (255, 0, 0), 2)
         cv2.imshow("Map", self.map_ss)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
 
     def follow_path(self):
-        # highlight next point, show all points.
+        selected_point = 0
+        def mouse_callback(event, x, y, flags, param):
+            nonlocal selected_point
+            if event == cv2.EVENT_LBUTTONDOWN:
+                for i, (px, py) in enumerate(self.points):
+                    if abs(px - x) < 10 and abs(py - y) < 10:
+                        selected_point = i
+                        break
+                print(f"Selected point: {selected_point}")
+        cv2.namedWindow("Map")
+        cv2.setMouseCallback("Map", mouse_callback)
         while True:
-            pass
+            self.show_path(selected_point)
+            key = cv2.waitKey(1)
+            if key == ord('d'):
+                # delete the selected point
+                if len(self.points) > 1:
+                    self.points.pop(selected_point)
+                    selected_point = 0
+                    self.run_tsp()
+                    continue
+            elif key == ord('n'):
+                selected_point = (selected_point + 1) % len(self.points)
+            elif key == 'p':
+                selected_point = (selected_point - 1) % len(self.points)
+            elif key == 27:  # ESC key
+                break
+
+
 
     
 def main():
     print("Select the region to capture...")
     app = Application()
     app.click_all_maps()
+    app.run_tsp()
+    app.follow_path()
     # region = app.select_region()
     # app.register_points()
 if __name__ == "__main__":
